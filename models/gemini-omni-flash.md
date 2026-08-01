@@ -18,9 +18,16 @@ Omni Flash runs on the Interactions API, not the Veo-style `generate_videos` lon
 
 ```python
 import base64
+import sys
 import time
 
 import google.genai as genai
+
+# save_generation ships with the skill in scripts/save.py — video writes its file and
+# sidecar through the same never-overwrite helper the image recipes use, so the audit
+# trail exists on the most expensive call too (see SKILL.md, Logging).
+sys.path.insert(0, "scripts")
+from save import save_generation
 
 client = genai.Client()  # reads GEMINI_API_KEY from env
 
@@ -44,8 +51,17 @@ if getattr(interaction, "output_video", None) is None or not interaction.output_
         "inspect the interaction before assuming it hung"
     )
 
-with open(output_path, "wb") as f:
-    f.write(base64.b64decode(interaction.output_video.data))
+video_bytes = base64.b64decode(interaction.output_video.data)
+sidecar = {
+    "model": "gemini-omni-flash-preview",
+    "prompt": prompt,
+    "reference_images": [],
+    "params": {"api": "interactions", "duration_seconds": duration_seconds},
+    "cost": approval["quoted_cost"],   # from the Quote & approve step
+    "created": created_iso,
+    "approval": approval,              # {quoted_cost, quoted_at, approved_text}
+}
+save_generation(video_bytes, ".mp4", base_name, out_dir, sidecar)
 ```
 
 ## Response handling

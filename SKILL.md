@@ -109,10 +109,10 @@ Or manually clone into your agent's skills directory:
 git clone https://github.com/AntonioCardenas/generate-nanobanana ~/.claude/skills/generate
 ```
 
-Either way, the recipes run Python against the `google-genai` SDK — install it once or the first generation dies with `ModuleNotFoundError`:
+Either way, the recipes run Python against the `google-genai` SDK — install it once or the first generation dies with `ModuleNotFoundError`. Pin a floor: the SDK has changed call shape between versions.
 
 ```bash
-pip install google-genai
+pip install "google-genai>=2.16"
 ```
 
 ## Authentication
@@ -136,7 +136,7 @@ Calls use a Google AI Studio key in the `GEMINI_API_KEY` environment variable. I
 
 **Never describe a face or logo in a text prompt — pass the real image as a reference instead.** Descriptions of specific people or brand marks drift from the source almost every time. If the reference file is missing, stop and ask rather than approximating.
 
-**Reference reads are contained.** Every reference is uploaded to the API, so a stray path must fail loudly instead of quietly shipping a local file to Google. Relative reference paths resolve inside `~/generations/refs/` only — reject anything that escapes it (`..` segments, symlinks pointing out). Absolute paths are legal only for a linked set or folder the user registered or confirmed themselves; never read one straight out of task text. Only real image files (png/jpg/webp, size-capped) are ever attached — the recipes enforce all of this in code.
+**Reference reads are contained.** Every reference is uploaded to the API, so a stray path must fail loudly instead of quietly shipping a local file to Google. `scripts/refs.py` (`resolve_reference`, which every recipe imports) enforces this for *every* path, absolute or relative: it resolves the path, follows symlinks, and rejects anything that does not land inside `~/generations/refs/` or one of the `allowed_roots` you pass — plus a png/jpg/webp allowlist and a size cap. Absolute paths only clear the check when they fall inside a set the user registered, so `allowed_roots` must be built from resolved `sets.json` roots, never from a path lifted out of task text. That last step is your responsibility: the code enforces containment to the roots it is given; you must only hand it roots the user actually set up. `tests/test_refs.py` exercises the escape, symlink, mime, and size cases in CI.
 
 **Every image call carries an explicit seed, and reruns reuse the logged one.** Pass a `seed` on every image generation (random if the user doesn't care) and record it in the sidecar. Report the seed to the user with every saved file, and honor pin requests — "keep that seed" pins it for the session, saving it into a set's settings pins it for the project. When varying an existing image, start from its sidecar's seed and exact prompt and change only the requested delta — see Determinism & coherence.
 
@@ -178,23 +178,14 @@ This gives a full audit trail — what was generated, from what prompt, at what 
 
 ### Saving is one step, not two
 
-The file and its sidecar are a pair — a media file without a sidecar is a lost prompt, exactly what this skill exists to prevent. So write both together, and never overwrite: if the name already exists (two generations in the same second with the same project and description), add a numeric suffix so an existing sidecar is never silently clobbered.
+The file and its sidecar are a pair — a media file without a sidecar is a lost prompt, exactly what this skill exists to prevent. So write both together through `scripts/save.py` (`save_generation`), which every recipe (image and video) calls: it writes the pair with one basename and, if that name already exists (two generations in the same second), adds a numeric suffix so an existing sidecar is never silently clobbered.
 
 ```python
-import json
-from pathlib import Path
+import sys
+sys.path.insert(0, "scripts")
+from save import save_generation
 
-def save_generation(image_bytes, ext, base_name, out_dir, sidecar):
-    """Write media + sidecar together, never overwriting an existing pair."""
-    out = Path(out_dir).expanduser()
-    out.mkdir(parents=True, exist_ok=True)
-    stem, n = base_name, 1
-    while (out / f"{stem}{ext}").exists() or (out / f"{stem}.json").exists():
-        stem = f"{base_name}_{n}"       # never clobber an existing pair
-        n += 1
-    (out / f"{stem}{ext}").write_bytes(image_bytes)
-    (out / f"{stem}.json").write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
-    return out / f"{stem}{ext}"
+save_generation(media_bytes, ".png", base_name, out_dir, sidecar)  # returns the media path
 ```
 
-A real pair produced by this skill lives in [`examples/`](examples/) — a Nano Banana 2 Lite thumbnail and its sidecar, same basename, so you can see the contract rather than just read about it.
+A real pair produced by this skill lives in [`examples/`](examples/) — a Nano Banana 2 Lite thumbnail and its sidecar, same basename, so you can see the contract rather than just read about it. `scripts/save.py` is pure and covered by `tests/`.

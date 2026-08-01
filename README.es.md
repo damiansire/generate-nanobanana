@@ -33,7 +33,7 @@ Instala directamente usando [`npx`](https://docs.npmjs.com/cli/v7/commands/npx) 
 
 ```bash
 npx skills add AntonioCardenas/generate-nanobanana
-pip install google-genai              # el SDK que todas las recetas importan
+pip install "google-genai>=2.16"      # el SDK que todas las recetas importan (pineado: cambió de forma entre versiones)
 export GEMINI_API_KEY=your_key_here   # o agrégalo a tu perfil de shell
 ```
 
@@ -61,7 +61,7 @@ El repositorio se llama `generate-nanobanana` para que sea fácil de encontrar; 
 
 1. **Ruteo (Route)** — selecciona el modelo para el trabajo y lee su archivo de receta antes de realizar cualquier llamada.
 2. **Carga de referencias (Load references)** — carga logotipos, rostros y capturas de estilo reales desde `~/generations/refs/`, o un conjunto completo con nombre cuando dices "on brand". Un logotipo descrito con palabras suele salir mal; los píxeles reales no fallan.
-3. **Generación (Generate)** — llama a la API de Gemini según la receta. Las imágenes responden en una sola llamada; el video requiere un proceso de envío y consulta continua (submit-then-poll).
+3. **Generación (Generate)** — llama a la API de Gemini según la receta. Las imágenes responden en una sola llamada; el video es una única llamada bloqueante en la Interactions API (decenas de segundos), no un proceso de envío y consulta continua.
 4. **Registro (Log)** — escribe el archivo JSON de registro (sidecar) junto al archivo guardado.
 
 ## Conjuntos de referencia — "generate on brand"
@@ -103,10 +103,11 @@ Casi todo en esta skill es una restricción, y son estas restricciones las que l
   "reference_set": "brand",
   "params": { "aspect_ratio": "16:9", "image_size": "1K", "seed": 481047 },
   "cost": "$0.04",
-  "created": "2026-07-31T14:20:00Z",
-  "approved_by_user": true
+  "created": "2026-07-31T14:20:00Z"
 }
 ```
+
+Las corridas pagas (video, lotes, resolución no estándar) agregan un bloque `approval` en vez de un flag auto-asertado — `{ "quoted_cost": "$1.00", "quoted_at": "…", "approved_text": "el sí del propio usuario" }` — de modo que una aprobación sin cotización asociada es inválida por construcción. Ver SKILL.md para el contrato completo.
 
 ## Qué hay aquí
 

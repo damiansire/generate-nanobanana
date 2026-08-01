@@ -15,31 +15,23 @@ Google's highest-quality image model. Strong at composition with multiple refere
 ## Request (Python, `google-genai` SDK)
 
 ```python
-from pathlib import Path
+import sys
 
 from google import genai
 from google.genai import types
 
+# resolve_reference ships with the skill in scripts/refs.py. It contains EVERY
+# reference to the refs library or a folder the user registered, so a stray path
+# fails loudly instead of uploading a local file to Google (see SKILL.md, Rules).
+sys.path.insert(0, "scripts")
+from refs import resolve_reference
+
 client = genai.Client()
 
-REFS_ROOT = (Path.home() / "generations" / "refs").resolve()
-ALLOWED_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
-MAX_REF_BYTES = 20 * 1024 * 1024  # every reference is uploaded to the API — cap it
-
 parts = []
-for ref_path in reference_images:  # up to 14 supported here
-    raw = Path(ref_path)
-    # Absolute paths only come from a linked set the user registered (see SKILL.md rules);
-    # relative paths must stay inside the refs library — no ".." tricks, no symlinks out.
-    p = raw.resolve() if raw.is_absolute() else (REFS_ROOT / raw).resolve()
-    if not raw.is_absolute() and not p.is_relative_to(REFS_ROOT):
-        raise ValueError(f"reference escapes {REFS_ROOT}: {ref_path}")
-    mime = ALLOWED_TYPES.get(p.suffix.lower())
-    if mime is None or not p.is_file():
-        raise ValueError(f"not an allowed reference image: {ref_path}")
-    if p.stat().st_size > MAX_REF_BYTES:
-        raise ValueError(f"reference too large: {ref_path}")
-    parts.append(types.Part.from_bytes(data=p.read_bytes(), mime_type=mime))
+for ref_path in reference_images:  # up to 14 here; set_roots resolved from sets.json
+    data, mime = resolve_reference(ref_path, allowed_roots=set_roots)
+    parts.append(types.Part.from_bytes(data=data, mime_type=mime))
 parts.append(types.Part.from_text(text=prompt))
 
 response = client.models.generate_content(
@@ -51,6 +43,11 @@ response = client.models.generate_content(
         image_config=types.ImageConfig(
             image_size="2K",       # 1K | 2K | 4K
             aspect_ratio="16:9",
+        ),
+        # A paid call should not hang forever, and transient 429/5xx deserve a retry.
+        http_options=types.HttpOptions(
+            timeout=120_000,  # milliseconds
+            retry_options=types.HttpRetryOptions(attempts=3),
         ),
     ),
 )

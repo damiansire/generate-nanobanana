@@ -34,7 +34,7 @@ Install directly using [`npx`](https://docs.npmjs.com/cli/v7/commands/npx) via t
 
 ```bash
 npx skills add AntonioCardenas/generate-nanobanana
-pip install google-genai              # the SDK every recipe imports
+pip install "google-genai>=2.16"      # the SDK every recipe imports (pinned: it has changed shape between versions)
 export GEMINI_API_KEY=your_key_here   # or put it in your shell profile
 ```
 
@@ -62,7 +62,7 @@ The repo is named `generate-nanobanana` so it's findable; the skill itself is na
 
 1. **Route** — pick the model for the job and read its recipe file before calling anything.
 2. **Load references** — real logos, faces, and style shots from `~/generations/refs/`, or a whole named set when you say "on brand". A logo described in words comes back wrong every time; the actual pixels don't.
-3. **Generate** — call the Gemini API per the recipe. Images reply in one call; video is submit-then-poll.
+3. **Generate** — call the Gemini API per the recipe. Images reply in one call; video is one blocking call on the Interactions API (tens of seconds), not a submit-then-poll job.
 4. **Log** — write the sidecar JSON next to the saved file.
 
 ## Reference sets — "generate on brand"
@@ -104,10 +104,11 @@ Almost everything in this skill is a constraint, and the constraints are what ma
   "reference_set": "brand",
   "params": { "aspect_ratio": "16:9", "image_size": "1K", "seed": 481047 },
   "cost": "$0.04",
-  "created": "2026-07-31T14:20:00Z",
-  "approved_by_user": true
+  "created": "2026-07-31T14:20:00Z"
 }
 ```
+
+Paid runs (video, batches, non-default resolution) add an `approval` block instead of a self-asserted flag — `{ "quoted_cost": "$1.00", "quoted_at": "…", "approved_text": "the user's own yes" }` — so an approval with no matching quote is invalid by construction. See SKILL.md for the full contract.
 
 ## What's here
 
